@@ -1,22 +1,22 @@
 import os
 import requests
 from flask import Flask, redirect, request, session, render_template, jsonify
+from dotenv import load_dotenv
 from functools import wraps
 
-API = "https://discord.com/api"
+from bot_state import get_state
+
+load_dotenv()
 
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
-FLASK_SECRET = os.getenv("FLASK_SECRET", "dev")
+
+API = "https://discord.com/api"
 
 def run_dashboard(bot):
     app = Flask(__name__)
-    app.secret_key = FLASK_SECRET
-
-    # ========================
-    # HELPERS
-    # ========================
+    app.secret_key = os.getenv("FLASK_SECRET", os.urandom(24))
 
     def login_required(f):
         @wraps(f)
@@ -31,10 +31,6 @@ def run_dashboard(bot):
             f"{API}{endpoint}",
             headers={"Authorization": f"Bearer {session['token']}"}
         ).json()
-
-    # ========================
-    # ROTAS
-    # ========================
 
     @app.route("/")
     def home():
@@ -54,50 +50,60 @@ def run_dashboard(bot):
     def callback():
         code = request.args.get("code")
 
-        if not code:
-            return "Código OAuth inválido", 400
-
-        data = {
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": REDIRECT_URI,
-            "scope": "identify guilds"
-        }
-
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
-
-        token_res = requests.post(
+        token = requests.post(
             f"{API}/oauth2/token",
-            data=data,
-            headers=headers
+            data={
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": REDIRECT_URI,
+                "scope": "identify guilds"
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"}
         ).json()
 
-        session["token"] = token_res.get("access_token")
-        return redirect("/dashboard")
+        session["token"] = token["access_token"]
+        return redirect("/guilds")
 
-    @app.route("/dashboard")
+    @app.route("/guilds")
     @login_required
-    def dashboard():
-        user = api_get("/users/@me")
+    def guilds():
         guilds = api_get("/users/@me/guilds")
+        return render_template("guilds.html", guilds=guilds)
 
-        return render_template(
-            "panel.html",
-            user=user,
-            guilds=guilds
-        )
+    @app.route("/guild/<gid>")
+    @login_required
+    def panel(gid):
+        return render_template("panel.html", guild_id=gid)
 
-    @app.route("/logout")
-    def logout():
-        session.clear()
-        return redirect("/")
+    @app.route("/api/state/<gid>")
+    def state(gid):
+        return jsonify(get_state(int(gid)))
 
-    # ========================
-    # START SERVER (RENDER)
-    # ========================
+    @app.route("/api/control", methods=["POST"])
+    @login_required
+    def control():
+        data = request.json
+        gid = int(data["guild"])
+        action = data["action"]
 
-    port = int(os.environ.get("PORT", 5000))
-    print(f"🌐 Dashboard rodando em 0.0.0.0:{port}")
-    app.run(host="0.0.0.0", port=port)
+        async def task():
+            guild = bot.get_guild(gid)
+            if not guild or not guild.voice_client:
+                return
+
+            vc = guild.voice_client
+
+            if action == "pause":
+                vc.pause()
+            elif action == "resume":
+                vc.resume()
+            elif action == "skip":
+                await vc.stop()
+
+        bot.loop.create_task(task())
+        return {"ok": True}
+
+    print("🌐 Dashboard online na porta 10000")
+    app.run(host="0.0.0.0", port=10000)
