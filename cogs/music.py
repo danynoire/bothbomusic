@@ -1,124 +1,101 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import wavelink
-import yt_dlp
-import asyncio
 
-from bot_state import get_state
-from database import get_guild_config, update_guild_config
-
-YTDL_OPTS = {
-    "format": "bestaudio",
-    "quiet": True,
-    "default_search": "ytsearch",
-    "noplaylist": True,
-}
-
-FFMPEG_OPTS = {
-    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-    "options": "-vn"
-}
+from bot_state import (
+    get_state, add_to_queue, pop_queue,
+    set_playing, set_paused, toggle_loop, set_current
+)
 
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    async def ensure_vc(self, ctx):
+    async def ensure_voice(self, ctx):
         if not ctx.author.voice:
             await ctx.send("❌ Entre em um canal de voz.")
             return None
 
         vc = ctx.voice_client
         if not vc:
-            vc = await ctx.author.voice.channel.connect()
+            vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
 
         return vc
 
-    # ===================== PLAY =====================
+    async def play_next(self, vc: wavelink.Player, guild_id: int):
+        state = get_state(guild_id)
+
+        if state["loop"] and state["current"]:
+            await vc.play(state["current"])
+            return
+
+        track = pop_queue(guild_id)
+        if not track:
+            set_playing(guild_id, False)
+            return
+
+        set_current(guild_id, track)
+        await vc.play(track)
+
     @commands.command(name="play", aliases=["p"])
-    async def play(self, ctx, *, query: str):
-        vc = await self.ensure_vc(ctx)
+    async def play(self, ctx, *, search: str):
+        vc = await self.ensure_voice(ctx)
         if not vc:
             return
 
+        track = await wavelink.YouTubeTrack.search(search, return_first=True)
+        add_to_queue(ctx.guild.id, track)
+
         state = get_state(ctx.guild.id)
-
-        # 🔹 tenta Lavalink primeiro
-        try:
-            track = await wavelink.YouTubeTrack.search(query, return_first=True)
-            player: wavelink.Player = ctx.voice_client
-
-            if not isinstance(player, wavelink.Player):
-                player = await ctx.author.voice.channel.connect(cls=wavelink.Player)
-
-            await player.play(track)
-            await player.set_volume(state["volume"])
-
-            embed = discord.Embed(
-                title="🎵 Tocando agora (Lavalink)",
-                description=track.title,
-                color=0x5865F2
-            )
-            await ctx.send(embed=embed)
-            return
-
-        except Exception:
-            pass  # cai pro yt-dlp
-
-        # 🔹 yt-dlp fallback
-        await ctx.send("⚠️ Usando fallback yt-dlp...")
-
-        loop = asyncio.get_event_loop()
-        data = await loop.run_in_executor(
-            None,
-            lambda: yt_dlp.YoutubeDL(YTDL_OPTS).extract_info(query, download=False)
-        )
-
-        if "entries" in data:
-            data = data["entries"][0]
-
-        url = data["url"]
-        title = data.get("title", "Desconhecido")
-
-        vc.play(
-            discord.FFmpegPCMAudio(url, **FFMPEG_OPTS)
-        )
+        if not vc.playing:
+            await self.play_next(vc, ctx.guild.id)
+            set_playing(ctx.guild.id, True)
 
         embed = discord.Embed(
-            title="🎵 Tocando agora (yt-dlp)",
-            description=title,
-            color=0xED4245
+            title="🎵 Música adicionada",
+            description=f"**{track.title}**",
+            color=0x2ecc71
         )
         await ctx.send(embed=embed)
 
-    # ===================== VOLUME =====================
-    @commands.command(name="volume")
-    async def volume(self, ctx, vol: int):
-        if not ctx.voice_client:
-            return
-
-        vol = max(1, min(vol, 200))
-
+    @commands.command(name="pause")
+    async def pause(self, ctx):
         vc = ctx.voice_client
-        if isinstance(vc, wavelink.Player):
-            await vc.set_volume(vol)
+        if vc:
+            vc.pause()
+            set_paused(ctx.guild.id, True)
+            await ctx.send("⏸ Pausado")
 
-        update_guild_config(ctx.guild.id, volume=vol)
-        get_state(ctx.guild.id)["volume"] = vol
+    @commands.command(name="resume")
+    async def resume(self, ctx):
+        vc = ctx.voice_client
+        if vc:
+            vc.resume()
+            set_paused(ctx.guild.id, False)
+            await ctx.send("▶️ Continuando")
 
-        await ctx.send(f"🔊 Volume definido para **{vol}%**")
+    @commands.command(name="skip")
+    async def skip(self, ctx):
+        vc = ctx.voice_client
+        if vc:
+            await vc.stop()
+            await self.play_next(vc, ctx.guild.id)
+            await ctx.send("⏭ Pulado")
 
-    # ===================== LOOP =====================
     @commands.command(name="loop")
     async def loop(self, ctx):
-        config = get_guild_config(ctx.guild.id)
-        new_state = not config.loop_queue
+        enabled = toggle_loop(ctx.guild.id)
+        await ctx.send(f"🔁 Loop {'ativado' if enabled else 'desativado'}")
 
-        update_guild_config(ctx.guild.id, loop_queue=new_state)
-        get_state(ctx.guild.id)["loop"] = new_state
+    # ---------- SLASH ----------
 
-        await ctx.send(
-            "🔁 Loop da fila **ativado**" if new_state else "⏹ Loop da fila **desativado**"
+    @app_commands.command(name="loop", description="Ativa/desativa loop da fila")
+    async def slash_loop(self, interaction: discord.Interaction):
+        enabled = toggle_loop(interaction.guild.id)
+        await interaction.response.send_message(
+            f"🔁 Loop {'ativado' if enabled else 'desativado'}",
+            ephemeral=True
         )
 
 async def setup(bot):
