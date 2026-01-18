@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>🎵 Music Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="container">
+    <h1>🎧 Music Dashboard</h1>
+
+    <div class="card">
+        <h2>🎶 Tocando agora</h2>
+        <p id="current">{{ state.current }}</p>
+    </div>
+
+    <div class="card controls">
+        <button onclick="action('pause')">⏸</button>
+        <button onclick="action('resume')">▶️</button>
+        <button onclick="action('skip')">⏭</button>
+        <button onclick="action('stop')">⏹</button>
+    </div>
+
+    <div class="card">
+        <h2>🔊 Volume</h2>
+        <input type="range" min="0" max="200" value="{{ state.volume }}"
+               oninput="setVolume(this.value)">
+        <span id="vol">{{ state.volume }}%</span>
+    </div>
+
+    <div class="card">
+        <h2>📜 Fila</h2>
+        <ul>
+            {% for track in state.queue %}
+                <li>{{ track }}</li>
+            {% else %}
+                <li>Fila vazia</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+<script src="/static/script.js"></script>
+</body>
+</html>

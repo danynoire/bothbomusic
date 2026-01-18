@@ -1,0 +1,5 @@
+discord.py[voice]
+wavelink
+flask
+requests
+python-dotenv

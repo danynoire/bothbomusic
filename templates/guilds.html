@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Servidores</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>Seus Servidores</header>
+
+<div class="container">
+  {% for g in guilds %}
+    <div class="card">
+      <a href="/guild/{{ g.id }}" style="color:white;text-decoration:none">
+        {{ g.name }}
+      </a>
+    </div>
+  {% endfor %}
+</div>
+
+</body>
+</html>
