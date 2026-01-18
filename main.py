@@ -14,7 +14,11 @@ LAVALINK_HOST = os.getenv("LAVALINK_HOST")
 LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", 2333))
 LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD")
 
-intents = discord.Intents.all()
+# 🔥 INTENTS SEM PRIVILEGIADOS
+intents = discord.Intents.default()
+intents.message_content = True
+intents.voice_states = True
+
 bot = commands.Bot(command_prefix="hb!", intents=intents)
 bot.owner_ids = OWNER_IDS
 
@@ -40,7 +44,6 @@ def start_dashboard():
 async def main():
     await load_cogs()
 
-    # 🔥 dashboard em thread separada
     threading.Thread(
         target=start_dashboard,
         daemon=True
