@@ -14,12 +14,15 @@ LAVALINK_HOST = os.getenv("LAVALINK_HOST")
 LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", 2333))
 LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD")
 
-# 🔥 INTENTS SEM PRIVILEGIADOS
+# 🔒 SEM intents privilegiados
 intents = discord.Intents.default()
-intents.message_content = True
 intents.voice_states = True
 
-bot = commands.Bot(command_prefix="hb!", intents=intents)
+bot = commands.Bot(
+    command_prefix="hb!",  # 🔥 prefixo pronto (inativo sem intent)
+    intents=intents
+)
+
 bot.owner_ids = OWNER_IDS
 
 @bot.event
@@ -32,6 +35,10 @@ async def on_ready():
         port=LAVALINK_PORT,
         password=LAVALINK_PASSWORD
     )
+
+    # 🔥 sincroniza slash commands
+    await bot.tree.sync()
+    print("✅ Slash commands sincronizados")
 
 async def load_cogs():
     for file in os.listdir("./cogs"):
