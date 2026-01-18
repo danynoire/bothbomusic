@@ -1,19 +1,19 @@
 import os, requests
 from flask import Flask, redirect, request, session, render_template, jsonify
-from functools import wraps
 from dotenv import load_dotenv
-
-from database import get_guild_config, get_all_guilds
+from functools import wraps
 from bot_state import get_state
+from database import save_guild_config
 
 load_dotenv()
 
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
-BOT_OWNERS = os.getenv("BOT_OWNERS", "").split(",")
+BOT_OWNERS = [int(x) for x in os.getenv("BOT_OWNERS", "").split(",")]
 
 API = "https://discord.com/api"
+
 
 def run_dashboard(bot):
     app = Flask(__name__)
@@ -50,7 +50,6 @@ def run_dashboard(bot):
     @app.route("/callback")
     def callback():
         code = request.args.get("code")
-
         token = requests.post(
             f"{API}/oauth2/token",
             data={
@@ -62,7 +61,6 @@ def run_dashboard(bot):
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"}
         ).json()
-
         session["token"] = token["access_token"]
         return redirect("/guilds")
 
@@ -72,23 +70,51 @@ def run_dashboard(bot):
         guilds = api_get("/users/@me/guilds")
         return render_template("guilds.html", guilds=guilds)
 
-    @app.route("/guild/<int:gid>")
-    @login_required
-    def panel(gid):
-        cfg = get_guild_config(gid)
-        state = get_state(gid)
-        return render_template("panel.html", guild_id=gid, cfg=cfg, state=state)
-
-    # 🔥 PAINEL ADMIN GLOBAL
     @app.route("/admin")
     @login_required
     def admin():
         user = api_get("/users/@me")
-        if user["id"] not in BOT_OWNERS:
+        if int(user["id"]) not in BOT_OWNERS:
             return "Acesso negado", 403
+        return render_template("admin.html")
 
-        guilds = get_all_guilds()
-        return render_template("admin.html", guilds=guilds)
+    @app.route("/guild/<gid>")
+    @login_required
+    def panel(gid):
+        return render_template("panel.html", guild_id=gid)
+
+    @app.route("/api/state/<gid>")
+    def state(gid):
+        return jsonify(get_state(int(gid)))
+
+    @app.route("/api/control", methods=["POST"])
+    @login_required
+    def control():
+        data = request.json
+        gid = int(data["guild"])
+        action = data["action"]
+        value = data.get("value")
+
+        async def task():
+            guild = bot.get_guild(gid)
+            if not guild or not guild.voice_client:
+                return
+            vc = guild.voice_client
+
+            if action == "pause":
+                vc.pause()
+            elif action == "resume":
+                vc.resume()
+            elif action == "skip":
+                await vc.stop()
+            elif action == "volume":
+                await vc.set_volume(int(value))
+                save_guild_config(gid, volume=int(value))
+            elif action == "seek":
+                await vc.seek(int(value) * 1000)
+
+        bot.loop.create_task(task())
+        return {"ok": True}
 
     print("🌐 Dashboard online")
     app.run(host="0.0.0.0", port=10000)
