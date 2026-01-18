@@ -1,124 +1,125 @@
 import discord
 from discord.ext import commands
 import wavelink
-import time
+import yt_dlp
+import asyncio
 
-from bot_state import guild_states
-from database import get_guild_config, save_guild_config
+from bot_state import get_state
+from database import get_guild_config, update_guild_config
+
+YTDL_OPTS = {
+    "format": "bestaudio",
+    "quiet": True,
+    "default_search": "ytsearch",
+    "noplaylist": True,
+}
+
+FFMPEG_OPTS = {
+    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+    "options": "-vn"
+}
 
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.start_times = {}
 
-    async def get_player(self, ctx):
-        if not ctx.voice_client:
-            vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
-
-            cfg = get_guild_config(ctx.guild.id)
-            await vc.set_volume(cfg["volume"])
-
-            return vc
-        return ctx.voice_client
-
-    @commands.command(name="play", aliases=["p"])
-    async def play(self, ctx, *, search: str):
+    async def ensure_vc(self, ctx):
         if not ctx.author.voice:
-            return await ctx.send("❌ Entre em um canal de voz")
+            await ctx.send("❌ Entre em um canal de voz.")
+            return None
 
-        vc = await self.get_player(ctx)
-        track = await wavelink.YouTubeTrack.search(search, return_first=True)
+        vc = ctx.voice_client
+        if not vc:
+            vc = await ctx.author.voice.channel.connect()
 
-        await vc.play(track)
-        self.start_times[ctx.guild.id] = time.time()
+        return vc
 
-        cfg = get_guild_config(ctx.guild.id)
+    # ===================== PLAY =====================
+    @commands.command(name="play", aliases=["p"])
+    async def play(self, ctx, *, query: str):
+        vc = await self.ensure_vc(ctx)
+        if not vc:
+            return
 
-        guild_states[ctx.guild.id] = {
-            "track": track.title,
-            "url": track.uri,
-            "paused": False,
-            "volume": vc.volume,
-            "position": 0,
-            "duration": track.length,
-            "loop_queue": cfg["loop_queue"]
-        }
+        state = get_state(ctx.guild.id)
+
+        # 🔹 tenta Lavalink primeiro
+        try:
+            track = await wavelink.YouTubeTrack.search(query, return_first=True)
+            player: wavelink.Player = ctx.voice_client
+
+            if not isinstance(player, wavelink.Player):
+                player = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+
+            await player.play(track)
+            await player.set_volume(state["volume"])
+
+            embed = discord.Embed(
+                title="🎵 Tocando agora (Lavalink)",
+                description=track.title,
+                color=0x5865F2
+            )
+            await ctx.send(embed=embed)
+            return
+
+        except Exception:
+            pass  # cai pro yt-dlp
+
+        # 🔹 yt-dlp fallback
+        await ctx.send("⚠️ Usando fallback yt-dlp...")
+
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(
+            None,
+            lambda: yt_dlp.YoutubeDL(YTDL_OPTS).extract_info(query, download=False)
+        )
+
+        if "entries" in data:
+            data = data["entries"][0]
+
+        url = data["url"]
+        title = data.get("title", "Desconhecido")
+
+        vc.play(
+            discord.FFmpegPCMAudio(url, **FFMPEG_OPTS)
+        )
 
         embed = discord.Embed(
-            title="🎶 Tocando agora",
-            description=f"[{track.title}]({track.uri})",
-            color=0x5865F2
+            title="🎵 Tocando agora (yt-dlp)",
+            description=title,
+            color=0xED4245
         )
         await ctx.send(embed=embed)
 
-    # 🔊 VOLUME (BANCO)
-    @commands.command()
+    # ===================== VOLUME =====================
+    @commands.command(name="volume")
     async def volume(self, ctx, vol: int):
-        vc = ctx.voice_client
-        if not vc:
+        if not ctx.voice_client:
             return
 
-        vol = max(1, min(vol, 100))
-        await vc.set_volume(vol)
+        vol = max(1, min(vol, 200))
 
-        save_guild_config(ctx.guild.id, volume=vol)
+        vc = ctx.voice_client
+        if isinstance(vc, wavelink.Player):
+            await vc.set_volume(vol)
 
-        guild_states.setdefault(ctx.guild.id, {})["volume"] = vol
+        update_guild_config(ctx.guild.id, volume=vol)
+        get_state(ctx.guild.id)["volume"] = vol
 
-        await ctx.send(f"🔊 Volume salvo: **{vol}%**")
+        await ctx.send(f"🔊 Volume definido para **{vol}%**")
 
-    # 🔁 LOOP FILA (BANCO)
-    @commands.command()
+    # ===================== LOOP =====================
+    @commands.command(name="loop")
     async def loop(self, ctx):
-        cfg = get_guild_config(ctx.guild.id)
-        new_state = not cfg["loop_queue"]
+        config = get_guild_config(ctx.guild.id)
+        new_state = not config.loop_queue
 
-        save_guild_config(ctx.guild.id, loop_queue=new_state)
+        update_guild_config(ctx.guild.id, loop_queue=new_state)
+        get_state(ctx.guild.id)["loop"] = new_state
 
-        guild_states.setdefault(ctx.guild.id, {})["loop_queue"] = new_state
-
-        estado = "ativado 🔁" if new_state else "desativado ❌"
-        await ctx.send(f"Loop da fila **{estado}**")
-
-    @commands.command()
-    async def pause(self, ctx):
-        if ctx.voice_client:
-            await ctx.voice_client.pause()
-            guild_states[ctx.guild.id]["paused"] = True
-            await ctx.send("⏸ Pausado")
-
-    @commands.command()
-    async def resume(self, ctx):
-        if ctx.voice_client:
-            await ctx.voice_client.resume()
-            guild_states[ctx.guild.id]["paused"] = False
-            self.start_times[ctx.guild.id] = time.time()
-            await ctx.send("▶️ Retomado")
-
-    @commands.command()
-    async def seek(self, ctx, seconds: int):
-        vc = ctx.voice_client
-        if not vc:
-            return
-
-        await vc.seek(seconds * 1000)
-        self.start_times[ctx.guild.id] = time.time() - seconds
-        guild_states[ctx.guild.id]["position"] = seconds
-
-        await ctx.send(f"⏩ Avançado para {seconds}s")
-
-    @commands.command()
-    async def skip(self, ctx):
-        if ctx.voice_client:
-            await ctx.voice_client.stop()
-            await ctx.send("⏭ Pulado")
-
-    @commands.command()
-    async def stop(self, ctx):
-        if ctx.voice_client:
-            await ctx.voice_client.disconnect()
-            guild_states.pop(ctx.guild.id, None)
-            await ctx.send("⏹ Desconectado")
+        await ctx.send(
+            "🔁 Loop da fila **ativado**" if new_state else "⏹ Loop da fila **desativado**"
+        )
 
 async def setup(bot):
     await bot.add_cog(Music(bot))
