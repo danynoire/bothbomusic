@@ -11,17 +11,21 @@
 
 <div class="container">
   <div class="card">
-    <h2>Servidores Registrados</h2>
+    <h2>📊 Servidores Registrados</h2>
 
-    <ul>
-      {% for g in guilds %}
-        <li>
-          Guild ID: {{ g.guild_id }} |
-          Loop: {{ g.loop }} |
-          Volume: {{ g.volume }}
-        </li>
-      {% endfor %}
-    </ul>
+    {% if guilds %}
+      <ul class="guild-list">
+        {% for g in guilds %}
+          <li class="guild-item">
+            <strong>Guild ID:</strong> {{ g.guild_id }} <br>
+            <strong>Loop da fila:</strong> {{ "Ativado" if g.loop else "Desativado" }} <br>
+            <strong>Volume:</strong> {{ g.volume }}%
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>Nenhum servidor registrado ainda.</p>
+    {% endif %}
   </div>
 </div>
 
