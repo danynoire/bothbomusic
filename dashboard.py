@@ -1,5 +1,5 @@
 from flask import Flask, render_template_string
-import asyncio
+import os
 
 def run_dashboard(bot):
     app = Flask(__name__)
@@ -23,5 +23,5 @@ def run_dashboard(bot):
     def index():
         return render_template_string(TEMPLATE, bot=bot)
 
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, app.run, "0.0.0.0", 5000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
