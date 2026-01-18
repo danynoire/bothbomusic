@@ -8,7 +8,7 @@ from dashboard import run_dashboard
 load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-OWNER_IDS = [int(x) for x in os.getenv("BOT_OWNER_IDS", "").split(",")]
+OWNER_IDS = [int(x) for x in os.getenv("BOT_OWNER_IDS", "").split(",") if x]
 
 LAVALINK_HOST = os.getenv("LAVALINK_HOST")
 LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", 2333))
@@ -40,7 +40,11 @@ def start_dashboard():
 async def main():
     await load_cogs()
 
-    threading.Thread(target=start_dashboard, daemon=True).start()
+    # 🔥 dashboard em thread separada
+    threading.Thread(
+        target=start_dashboard,
+        daemon=True
+    ).start()
 
     await bot.start(TOKEN)
 
