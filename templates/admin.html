@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>HB Music • Admin</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>⚙️ Painel Admin Global</header>
+
+<div class="container">
+  <div class="card">
+    <h2>Servidores Registrados</h2>
+
+    <ul>
+      {% for g in guilds %}
+        <li>
+          Guild ID: {{ g.guild_id }} |
+          Loop: {{ g.loop }} |
+          Volume: {{ g.volume }}
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>
