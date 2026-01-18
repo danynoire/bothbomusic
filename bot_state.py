@@ -1,2 +1,6 @@
+# bot_state.py
+
 guild_states = {}
-guild_configs = {}
+
+def get_state(guild_id: int):
+    if guild
