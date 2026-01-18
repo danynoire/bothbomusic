@@ -1,9 +1,9 @@
-import os
-import requests
+import os, requests
 from flask import Flask, redirect, request, session, render_template, jsonify
-from dotenv import load_dotenv
 from functools import wraps
+from dotenv import load_dotenv
 
+from database import get_guild_config, get_all_guilds
 from bot_state import get_state
 
 load_dotenv()
@@ -11,12 +11,13 @@ load_dotenv()
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
+BOT_OWNERS = os.getenv("BOT_OWNERS", "").split(",")
 
 API = "https://discord.com/api"
 
 def run_dashboard(bot):
     app = Flask(__name__)
-    app.secret_key = os.getenv("FLASK_SECRET", os.urandom(24))
+    app.secret_key = os.getenv("FLASK_SECRET")
 
     def login_required(f):
         @wraps(f)
@@ -58,7 +59,6 @@ def run_dashboard(bot):
                 "grant_type": "authorization_code",
                 "code": code,
                 "redirect_uri": REDIRECT_URI,
-                "scope": "identify guilds"
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"}
         ).json()
@@ -72,38 +72,23 @@ def run_dashboard(bot):
         guilds = api_get("/users/@me/guilds")
         return render_template("guilds.html", guilds=guilds)
 
-    @app.route("/guild/<gid>")
+    @app.route("/guild/<int:gid>")
     @login_required
     def panel(gid):
-        return render_template("panel.html", guild_id=gid)
+        cfg = get_guild_config(gid)
+        state = get_state(gid)
+        return render_template("panel.html", guild_id=gid, cfg=cfg, state=state)
 
-    @app.route("/api/state/<gid>")
-    def state(gid):
-        return jsonify(get_state(int(gid)))
-
-    @app.route("/api/control", methods=["POST"])
+    # 🔥 PAINEL ADMIN GLOBAL
+    @app.route("/admin")
     @login_required
-    def control():
-        data = request.json
-        gid = int(data["guild"])
-        action = data["action"]
+    def admin():
+        user = api_get("/users/@me")
+        if user["id"] not in BOT_OWNERS:
+            return "Acesso negado", 403
 
-        async def task():
-            guild = bot.get_guild(gid)
-            if not guild or not guild.voice_client:
-                return
+        guilds = get_all_guilds()
+        return render_template("admin.html", guilds=guilds)
 
-            vc = guild.voice_client
-
-            if action == "pause":
-                vc.pause()
-            elif action == "resume":
-                vc.resume()
-            elif action == "skip":
-                await vc.stop()
-
-        bot.loop.create_task(task())
-        return {"ok": True}
-
-    print("🌐 Dashboard online na porta 10000")
+    print("🌐 Dashboard online")
     app.run(host="0.0.0.0", port=10000)
