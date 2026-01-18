@@ -1,5 +1,7 @@
-discord.py[voice]
+discord.py
 wavelink
 flask
 requests
 python-dotenv
+sqlalchemy
+psycopg2-binary
