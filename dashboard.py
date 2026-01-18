@@ -24,4 +24,6 @@ def run_dashboard(bot):
         return render_template_string(TEMPLATE, bot=bot)
 
     port = int(os.environ.get("PORT", 10000))
+    print(f"🌐 Dashboard rodando na porta {port}")
+
     app.run(host="0.0.0.0", port=port)
