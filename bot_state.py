@@ -1,20 +1,16 @@
 # bot_state.py
 
-# Estado em memória por guild
-# guild_id: { playing, paused, volume, loop, queue }
-
 guild_states = {}
 
-
 def get_state(guild_id: int) -> dict:
-    """Retorna o estado da guild, criando se não existir"""
     if guild_id not in guild_states:
         guild_states[guild_id] = {
             "playing": False,
             "paused": False,
             "volume": 100,
             "loop": False,
-            "queue": []
+            "queue": [],
+            "current": None
         }
     return guild_states[guild_id]
 
@@ -48,3 +44,8 @@ def pop_queue(guild_id: int):
 
 def clear_queue(guild_id: int):
     get_state(guild_id)["queue"].clear()
+
+
+def set_current(guild_id: int, track):
+    get_state(guild_id)["current"] = track
+
