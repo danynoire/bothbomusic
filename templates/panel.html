@@ -1,60 +1,33 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>HB Music • Painel</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <title>Painel do Servidor</title>
 </head>
 <body>
 
 <h2>Servidor {{ guild_id }}</h2>
 
-<div class="player">
-  <div id="track">Nenhuma música</div>
+<button onclick="send('pause')">⏸ Pausar</button>
+<button onclick="send('resume')">▶️ Continuar</button>
+<button onclick="send('skip')">⏭ Pular</button>
 
-  <input type="range" id="progress" min="0">
-
-  <label>🔊 Volume</label>
-  <input type="range" id="volume" min="1" max="100">
-
-  <div class="controls">
-    <button onclick="send('pause')">⏸</button>
-    <button onclick="send('resume')">▶️</button>
-    <button onclick="send('skip')">⏭</button>
-  </div>
-</div>
+<pre id="state"></pre>
 
 <script>
-const gid = "{{ guild_id }}"
-
-function send(action, value=null) {
+function send(action) {
   fetch("/api/control", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({guild: gid, action, value})
+    body: JSON.stringify({guild: "{{ guild_id }}", action})
   })
 }
 
-function update() {
-  fetch(`/api/state/${gid}`)
-    .then(r => r.json())
-    .then(d => {
-      if (!d.track) return
-      document.getElementById("track").innerText = d.track
-      document.getElementById("progress").max = Math.floor(d.duration / 1000)
-      document.getElementById("progress").value = d.position || 0
-      document.getElementById("volume").value = d.volume || 50
-    })
-}
-
-document.getElementById("progress").addEventListener("change", e => {
-  send("seek", e.target.value)
+fetch("/api/state/{{ guild_id }}")
+.then(r => r.json())
+.then(d => {
+  document.getElementById("state").innerText =
+    JSON.stringify(d, null, 2)
 })
-
-document.getElementById("volume").addEventListener("change", e => {
-  send("volume", e.target.value)
-})
-
-setInterval(update, 2000)
 </script>
 
 </body>
