@@ -1,45 +1,81 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import wavelink
+from collections import deque
 
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.queues = {}
+        self.looping = set()
 
+    # ======================
+    # 🔧 HELPERS
+    # ======================
+    def get_queue(self, guild_id):
+        if guild_id not in self.queues:
+            self.queues[guild_id] = deque()
+        return self.queues[guild_id]
+
+    async def play_next(self, vc: wavelink.Player):
+        queue = self.get_queue(vc.guild.id)
+
+        if vc.guild.id in self.looping and vc.current:
+            await vc.play(vc.current)
+            return
+
+        if not queue:
+            return
+
+        track = queue.popleft()
+        await vc.play(track)
+
+    def embed(self, title, desc, color):
+        return discord.Embed(
+            title=title,
+            description=desc,
+            color=color
+        )
+
+    # ======================
+    # 🎵 PREFIX PLAY
+    # ======================
     @commands.command(name="play", aliases=["p"])
-    async def play(self, ctx, *, search: str):
+    async def play_prefix(self, ctx, *, search: str):
         if not ctx.author.voice:
-            return await ctx.send("❌ Entre em um canal de voz.")
+            return await ctx.send(
+                embed=self.embed(
+                    "❌ Erro",
+                    "Entre em um canal de voz primeiro.",
+                    discord.Color.red()
+                )
+            )
 
         vc: wavelink.Player = ctx.voice_client
         if not vc:
             vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
 
-        track = await wavelink.YouTubeTrack.search(search, return_first=True)
-        await vc.play(track)
-        await ctx.send(f"🎵 Tocando: **{track.title}**")
+        tracks = await wavelink.Playable.search(search)
+        if not tracks:
+            return await ctx.send(
+                embed=self.embed(
+                    "❌ Não encontrado",
+                    "Nenhuma música encontrada.",
+                    discord.Color.red()
+                )
+            )
 
-    @commands.command(name="volume")
-    async def volume(self, ctx, vol: int):
-        vc: wavelink.Player = ctx.voice_client
-        if not vc:
-            return
-        await vc.set_volume(vol)
-        await ctx.send(f"🔊 Volume: {vol}%")
+        track = tracks[0]
+        queue = self.get_queue(ctx.guild.id)
 
-    @commands.command(name="skip")
-    async def skip(self, ctx):
-        vc: wavelink.Player = ctx.voice_client
-        if vc:
-            await vc.stop()
-            await ctx.send("⏭ Pulado")
-
-    @commands.command(name="stop")
-    async def stop(self, ctx):
-        vc: wavelink.Player = ctx.voice_client
-        if vc:
-            await vc.disconnect()
-            await ctx.send("⏹ Parado")
-
-async def setup(bot):
-    await bot.add_cog(Music(bot))
+        if vc.is_playing():
+            queue.append(track)
+            await ctx.send(
+                embed=self.embed(
+                    "➕ Adicionado à fila",
+                    f"**{track.title}**",
+                    discord.Color.blue()
+                )
+            )
+        els
