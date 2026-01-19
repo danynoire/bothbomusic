@@ -11,6 +11,10 @@ OWNER_ID = int(os.getenv("BOT_OWNER_ID"))
 
 intents = discord.Intents.all()
 
+intents = discord.Intents.default()
+intents.message_content = True
+intents.voice_states = True
+
 bot = commands.Bot(
     command_prefix="hb!",
     intents=intents,
@@ -32,3 +36,4 @@ async def main():
 
 import asyncio
 asyncio.run(main())
+
