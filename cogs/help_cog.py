@@ -5,21 +5,21 @@ class Help(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.hybrid_command(name="help", description="Mostra os comandos")
+    @commands.hybrid_command(name="help", description="Mostra todos os comandos")
     async def help(self, ctx):
         embed = discord.Embed(
-            title="📘 Ajuda do HB Music",
+            title="📘 HBO Music • Ajuda",
             description="Prefixo: `hb!` | Slash: `/`",
             color=0x5865F2
         )
         embed.add_field(
             name="🎵 Música",
-            value="play, pause, resume, skip, stop, queue, loop, volume",
+            value="play, pause, resume, skip, stop, queue, loop, volume, seek",
             inline=False
         )
         embed.add_field(
             name="⚙️ Admin",
-            value="dashboard, stats, logs",
+            value="panel, stats",
             inline=False
         )
         await ctx.send(embed=embed)
