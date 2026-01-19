@@ -30,6 +30,17 @@ class Music(commands.Cog):
         track = await wavelink.Playable.search(query, source=wavelink.TrackSource.YouTube)
         await vc.play(track[0])
         await ctx.send(f"▶️ Tocando **{track[0].title}**")
+@commands.command()
+async def loop(self, ctx, mode: str):
+    vc = ctx.voice_client
+    if mode == "queue":
+        vc.queue.mode = wavelink.QueueMode.loop
+    elif mode == "track":
+        vc.queue.mode = wavelink.QueueMode.loop_track
+    else:
+        vc.queue.mode = wavelink.QueueMode.normal
+
+    await ctx.send(f"🔁 Loop definido para **{mode}**")
 
 def setup(bot):
     bot.add_cog(Music(bot))
