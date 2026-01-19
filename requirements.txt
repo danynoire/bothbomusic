@@ -1,5 +1,5 @@
-discord.py>=2.3.2
-wavelink
+discord.py>=2.4.0
+wavelink>=3.4.0
 flask
 requests
 python-dotenv
@@ -7,5 +7,6 @@ sqlalchemy
 psycopg2-binary
 yt-dlp
 ffmpeg-python
+
 
 
