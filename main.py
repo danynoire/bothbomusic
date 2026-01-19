@@ -23,22 +23,17 @@ bot = commands.Bot(
     command_prefix="hb!",
     intents=intents,
     owner_id=OWNER_ID,
-    help_command=None  # 🔥 MUITO IMPORTANTE
+    help_command=None
 )
 
 async def main():
     async with bot:
         await bot.load_extension("cogs.help_cog")
-        await bot.load_extension("music")
+        await bot.load_extension("cogs.music")  # ✅ AQUI
         await bot.start(TOKEN)
 
 @bot.event
 async def on_ready():
     print(f"✅ Bot online: {bot.user}")
-    try:
-        synced = await bot.tree.sync()
-        print(f"🔁 Slash commands sincronizados: {len(synced)}")
-    except Exception as e:
-        print("❌ Erro ao syncar slash:", e)
 
 asyncio.run(main())
