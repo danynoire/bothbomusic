@@ -1,39 +1,23 @@
-import os
-import asyncio
 import discord
 from discord.ext import commands
-from dotenv import load_dotenv
-
-load_dotenv()
-
-TOKEN = os.getenv("DISCORD_TOKEN")
-
-OWNER_ID_ENV = os.getenv("BOT_OWNER_ID")
-if not OWNER_ID_ENV:
-    raise RuntimeError("❌ BOT_OWNER_ID não definido no ambiente")
-
-OWNER_ID = int(OWNER_ID_ENV)
+import asyncio
+import os
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.voice_states = True
-intents.guilds = True
 
 bot = commands.Bot(
     command_prefix="hb!",
     intents=intents,
-    owner_id=OWNER_ID,
     help_command=None
 )
 
-async def main():
-    async with bot:
-        await bot.load_extension("cogs.help_cog")
-        await bot.load_extension("cogs.music")  # ✅ AQUI
-        await bot.start(TOKEN)
-
 @bot.event
 async def on_ready():
-    print(f"✅ Bot online: {bot.user}")
+    print(f"🤖 Logado como {bot.user}")
+
+async def main():
+    await bot.load_extension("cogs.music")
+    await bot.start(os.getenv("DISCORD_TOKEN"))
 
 asyncio.run(main())
