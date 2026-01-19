@@ -1,30 +1,33 @@
 import discord
 from discord.ext import commands
-from player import get_player
 
-class Music(commands.Cog, name="🎵 Música"):
+class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.hybrid_command(description="Tocar música")
-    async def play(self, ctx, *, query):
-        player = get_player(ctx.guild)
+    @commands.hybrid_command()
+    async def play(self, ctx, *, query: str):
+        await ctx.send(f"▶️ Tocando: `{query}`")
 
-        if not ctx.guild.voice_client:
-            await ctx.author.voice.channel.connect()
+    @commands.hybrid_command()
+    async def pause(self, ctx):
+        await ctx.send("⏸️ Pausado")
 
-        await player.add(query)
-        await ctx.send(f"🎶 Tocando: **{query}**")
+    @commands.hybrid_command()
+    async def resume(self, ctx):
+        await ctx.send("▶️ Continuando")
 
-    @commands.hybrid_command(description="Pular música")
+    @commands.hybrid_command()
     async def skip(self, ctx):
-        ctx.guild.voice_client.stop()
-        await ctx.send("⏭ Pulou")
+        await ctx.send("⏭️ Pulado")
 
-    @commands.hybrid_command(description="Parar música")
+    @commands.hybrid_command()
     async def stop(self, ctx):
-        await ctx.guild.voice_client.disconnect()
-        await ctx.send("⏹ Parado")
+        await ctx.send("⏹️ Parado")
+
+    @commands.hybrid_command()
+    async def loop(self, ctx, mode: str):
+        await ctx.send(f"🔁 Loop: `{mode}`")
 
 async def setup(bot):
     await bot.add_cog(Music(bot))
