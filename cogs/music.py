@@ -1,6 +1,6 @@
+import os
 import wavelink
 from discord.ext import commands
-import os
 
 class Music(commands.Cog):
     def __init__(self, bot):
@@ -20,27 +20,30 @@ class Music(commands.Cog):
             )
             print("🎵 Lavalink conectado")
 
-    @commands.command()
+    @commands.hybrid_command(name="play", description="Tocar música")
     async def play(self, ctx, *, query: str):
         if not ctx.voice_client:
             vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
         else:
             vc = ctx.voice_client
 
-        track = await wavelink.Playable.search(query, source=wavelink.TrackSource.YouTube)
-        await vc.play(track[0])
-        await ctx.send(f"▶️ Tocando **{track[0].title}**")
-@commands.command()
-async def loop(self, ctx, mode: str):
-    vc = ctx.voice_client
-    if mode == "queue":
-        vc.queue.mode = wavelink.QueueMode.loop
-    elif mode == "track":
-        vc.queue.mode = wavelink.QueueMode.loop_track
-    else:
-        vc.queue.mode = wavelink.QueueMode.normal
+        tracks = await wavelink.Playable.search(query)
+        await vc.play(tracks[0])
+        await ctx.send(f"▶️ Tocando **{tracks[0].title}**")
 
-    await ctx.send(f"🔁 Loop definido para **{mode}**")
+    @commands.hybrid_command(name="loop", description="Definir loop (queue/track/none)")
+    async def loop(self, ctx, mode: str):
+        vc = ctx.voice_client
+        if mode.lower() == "queue":
+            vc.queue.mode = wavelink.QueueMode.loop
+            msg = "🔁 Loop na fila"
+        elif mode.lower() == "track":
+            vc.queue.mode = wavelink.QueueMode.loop_track
+            msg = "🔂 Loop na música"
+        else:
+            vc.queue.mode = wavelink.QueueMode.none
+            msg = "⏹ Loop desligado"
+        await ctx.send(msg)
 
-def setup(bot):
-    bot.add_cog(Music(bot))
+async def setup(bot):
+    await bot.add_cog(Music(bot))
