@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 from config import TOKEN, PREFIX
-from help import setup_help
+await bot.load_extension("cogs.help_cog")
 
 intents = discord.Intents.all()
 
@@ -17,3 +17,4 @@ async def on_ready():
     print("🤖 Bot online")
 
 bot.run(TOKEN)
+
