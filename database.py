@@ -1,14 +1,20 @@
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.orm import declarative_base, sessionmaker
-from config import DATABASE_URL
+import sqlite3
 
-Base = declarative_base()
-engine = create_engine(DATABASE_URL, echo=False)
-Session = sessionmaker(bind=engine)
+conn = sqlite3.connect("data.db", check_same_thread=False)
+cur = conn.cursor()
 
-class GuildConfig(Base):
-    __tablename__ = "guilds"
-    id = Column(Integer, primary_key=True)
-    prefix = Column(String, default="hb!")
+cur.execute("""
+CREATE TABLE IF NOT EXISTS guilds (
+    guild_id INTEGER PRIMARY KEY,
+    volume INTEGER DEFAULT 100,
+    loop TEXT DEFAULT 'off'
+)
+""")
+conn.commit()
 
-Base.metadata.create_all(engine)
+def save_guild(gid, volume=100, loop="off"):
+    cur.execute(
+        "INSERT OR REPLACE INTO guilds VALUES (?, ?, ?)",
+        (gid, volume, loop)
+    )
+    conn.commit()
