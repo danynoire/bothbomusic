@@ -1,61 +1,54 @@
 import os
-from flask import Flask, render_template, jsonify, request
-from functools import wraps
-
+from flask import Flask, request, jsonify, render_template
 from bot_state import get_state
-from database import save_guild_config
+from database import get_all_guilds, save_guild_config
 
-BOT_OWNERS = [int(x) for x in os.getenv("BOT_OWNERS", "").split(",") if x]
-DASHBOARD_TOKEN = os.getenv("DASHBOARD_TOKEN", "admin123")
-
+DASHBOARD_TOKEN = os.getenv("DASHBOARD_TOKEN")
+FLASK_SECRET = os.getenv("FLASK_SECRET", "dev")
 
 def run_dashboard(bot):
     app = Flask(__name__)
-    app.secret_key = os.getenv("FLASK_SECRET", "secret")
+    app.secret_key = FLASK_SECRET
 
-    # ───────────────────────────────
-    # 🔐 Auth simples por token
-    # ───────────────────────────────
-    def admin_required(f):
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            token = request.headers.get("X-Admin-Token")
-            if token != DASHBOARD_TOKEN:
-                return {"error": "unauthorized"}, 403
-            return f(*args, **kwargs)
-        return wrapper
+    # 🔒 proteção simples por token
+    def check_token(req):
+        token = req.headers.get("Authorization")
+        return token == DASHBOARD_TOKEN
 
-    # ───────────────────────────────
-    # 🏠 Home
-    # ───────────────────────────────
     @app.route("/")
     def home():
-        return render_template("index.html")
+        return render_template("login.html")
 
-    # ───────────────────────────────
-    # 📊 Estado do bot
-    # ───────────────────────────────
-    @app.route("/api/status")
-    def status():
-        return jsonify({
-            "online": bot.is_ready(),
-            "guilds": len(bot.guilds),
-            "latency": round(bot.latency * 1000) if bot.is_ready() else None
-        })
+    @app.route("/panel")
+    def panel():
+        return render_template("panel.html")
 
-    # ───────────────────────────────
-    # 📊 Estado de uma guild
-    # ───────────────────────────────
+    @app.route("/admin")
+    def admin():
+        return render_template("admin.html")
+
+    # 📊 estado de uma guild
     @app.route("/api/state/<int:gid>")
     def state(gid):
         return jsonify(get_state(gid))
 
-    # ───────────────────────────────
-    # 🎛️ Controle do bot
-    # ───────────────────────────────
+    # 📈 estatísticas globais
+    @app.route("/api/stats")
+    def stats():
+        guilds = bot.guilds
+        voice = sum(1 for g in guilds if g.voice_client)
+        return jsonify({
+            "guilds": len(guilds),
+            "voice_connections": voice,
+            "users": sum(g.member_count for g in guilds)
+        })
+
+    # ⚙️ controles do bot
     @app.route("/api/control", methods=["POST"])
-    @admin_required
     def control():
+        if not check_token(request):
+            return {"error": "unauthorized"}, 403
+
         data = request.json
         gid = int(data["guild"])
         action = data["action"]
@@ -70,24 +63,18 @@ def run_dashboard(bot):
 
             if action == "pause":
                 vc.pause()
-
             elif action == "resume":
                 vc.resume()
-
             elif action == "skip":
                 await vc.stop()
-
             elif action == "volume":
-                vol = max(0, min(200, int(value)))
-                await vc.set_volume(vol)
-                save_guild_config(gid, volume=vol)
-
-            elif action == "disconnect":
-                await vc.disconnect()
+                await vc.set_volume(int(value))
+                save_guild_config(gid, volume=int(value))
+            elif action == "seek":
+                await vc.seek(int(value) * 1000)
 
         bot.loop.create_task(task())
         return {"ok": True}
 
-    # ───────────────────────────────
-    print("🌐 Dashboard iniciado (SEM OAuth)")
+    print("🌐 Dashboard online (sem OAuth)")
     app.run(host="0.0.0.0", port=10000)
