@@ -1,33 +1,35 @@
-import discord
+import wavelink
 from discord.ext import commands
+import os
 
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.hybrid_command()
+    @commands.Cog.listener()
+    async def on_ready(self):
+        if not wavelink.Pool.nodes:
+            await wavelink.Pool.connect(
+                client=self.bot,
+                nodes=[
+                    wavelink.Node(
+                        uri=f"http://{os.getenv('LAVALINK_HOST')}:{os.getenv('LAVALINK_PORT')}",
+                        password=os.getenv("LAVALINK_PASSWORD")
+                    )
+                ]
+            )
+            print("🎵 Lavalink conectado")
+
+    @commands.command()
     async def play(self, ctx, *, query: str):
-        await ctx.send(f"▶️ Tocando: `{query}`")
+        if not ctx.voice_client:
+            vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+        else:
+            vc = ctx.voice_client
 
-    @commands.hybrid_command()
-    async def pause(self, ctx):
-        await ctx.send("⏸️ Pausado")
+        track = await wavelink.Playable.search(query, source=wavelink.TrackSource.YouTube)
+        await vc.play(track[0])
+        await ctx.send(f"▶️ Tocando **{track[0].title}**")
 
-    @commands.hybrid_command()
-    async def resume(self, ctx):
-        await ctx.send("▶️ Continuando")
-
-    @commands.hybrid_command()
-    async def skip(self, ctx):
-        await ctx.send("⏭️ Pulado")
-
-    @commands.hybrid_command()
-    async def stop(self, ctx):
-        await ctx.send("⏹️ Parado")
-
-    @commands.hybrid_command()
-    async def loop(self, ctx, mode: str):
-        await ctx.send(f"🔁 Loop: `{mode}`")
-
-async def setup(bot):
-    await bot.add_cog(Music(bot))
+def setup(bot):
+    bot.add_cog(Music(bot))
