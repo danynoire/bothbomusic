@@ -1,71 +1,47 @@
 import yt_dlp
 import discord
 import asyncio
-import random
+from collections import deque
 
-YDL = yt_dlp.YoutubeDL({
+ytdlp_opts = {
     "format": "bestaudio",
     "quiet": True,
-    "noplaylist": False
-})
+    "default_search": "ytsearch",
+}
 
 class MusicPlayer:
-    def __init__(self, bot, guild):
-        self.bot = bot
+    def __init__(self, guild):
         self.guild = guild
-        self.queue = []
-        self.loop = False
+        self.queue = deque()
         self.current = None
-        self.position = 0
+        self.loop = False
 
     async def add(self, query):
-        data = YDL.extract_info(query, download=False)
-        if "entries" in data:
-            data = data["entries"][0]
+        with yt_dlp.YoutubeDL(ytdlp_opts) as ydl:
+            info = ydl.extract_info(query, download=False)
+            if "entries" in info:
+                info = info["entries"][0]
 
-        self.queue.append(data)
-
-        if not self.guild.voice_client.is_playing():
+        self.queue.append(info)
+        if not self.current:
             await self.play_next()
 
     async def play_next(self):
+        if self.loop and self.current:
+            self.queue.appendleft(self.current)
+
         if not self.queue:
+            self.current = None
             return
 
-        self.current = self.queue[0]
-        self.position = 0
+        self.current = self.queue.popleft()
+        source = discord.FFmpegPCMAudio(self.current["url"])
+        vc = self.guild.voice_client
+        vc.play(source, after=lambda _: asyncio.run_coroutine_threadsafe(self.play_next(), vc.loop))
 
-        self._play()
+players = {}
 
-    def _play(self):
-        url = self.current["url"]
-
-        source = discord.FFmpegPCMAudio(
-            url,
-            before_options=f"-ss {self.position} -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-            options="-vn"
-        )
-
-        self.guild.voice_client.play(
-            source,
-            after=lambda e: self.bot.loop.create_task(self.after())
-        )
-
-    async def after(self):
-        if not self.loop:
-            self.queue.pop(0)
-        await self.play_next()
-
-    def seek(self, seconds: int):
-        self.position = seconds
-        self.guild.voice_client.stop()
-
-    def shuffle(self):
-        random.shuffle(self.queue)
-
-    def queue_text(self):
-        if not self.queue:
-            return "Fila vazia"
-        return "\n".join(
-            f"{i+1}. {x['title']}" for i, x in enumerate(self.queue)
-        )
+def get_player(guild):
+    if guild.id not in players:
+        players[guild.id] = MusicPlayer(guild)
+    return players[guild.id]
