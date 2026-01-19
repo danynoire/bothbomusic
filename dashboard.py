@@ -5,29 +5,31 @@ from dotenv import load_dotenv
 from functools import wraps
 
 from bot_state import get_state
-from database import (
-    save_guild_config,
-    SessionLocal,
-    GuildConfig
-)
+from database import save_guild_config
 
 load_dotenv()
+
+# ================== CONFIG ==================
 
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
-BOT_OWNERS = [int(x) for x in os.getenv("BOT_OWNERS", "").split(",") if x]
+FLASK_SECRET = os.getenv("FLASK_SECRET")
+
+BOT_OWNERS = [
+    int(x) for x in os.getenv("BOT_OWNERS", "").split(",") if x
+]
 
 API = "https://discord.com/api"
+
+# ============================================
 
 
 def run_dashboard(bot):
     app = Flask(__name__)
-    app.secret_key = os.getenv("FLASK_SECRET")
+    app.secret_key = FLASK_SECRET
 
-    # ======================
-    # Helpers
-    # ======================
+    # ----------- HELPERS -----------
 
     def login_required(f):
         @wraps(f)
@@ -40,16 +42,12 @@ def run_dashboard(bot):
     def api_get(endpoint):
         return requests.get(
             f"{API}{endpoint}",
-            headers={"Authorization": f"Bearer {session['token']}"}
+            headers={
+                "Authorization": f"Bearer {session['token']}"
+            }
         ).json()
 
-    def is_owner():
-        user = api_get("/users/@me")
-        return int(user["id"]) in BOT_OWNERS
-
-    # ======================
-    # Rotas públicas
-    # ======================
+    # ----------- ROTAS -----------
 
     @app.route("/")
     def home():
@@ -62,14 +60,17 @@ def run_dashboard(bot):
             f"?client_id={CLIENT_ID}"
             f"&redirect_uri={REDIRECT_URI}"
             f"&response_type=code"
-            f"&scope=identify guilds"
+            f"&scope=identify%20guilds"
         )
 
+    # ===== CALLBACK OAUTH2 (CRÍTICO) =====
     @app.route("/callback")
     def callback():
         code = request.args.get("code")
+        if not code:
+            return "Código OAuth não recebido", 400
 
-        token = requests.post(
+        r = requests.post(
             f"{API}/oauth2/token",
             data={
                 "client_id": CLIENT_ID,
@@ -77,16 +78,24 @@ def run_dashboard(bot):
                 "grant_type": "authorization_code",
                 "code": code,
                 "redirect_uri": REDIRECT_URI,
+                "scope": "identify guilds",
             },
-            headers={"Content-Type": "application/x-www-form-urlencoded"}
-        ).json()
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded"
+            }
+        )
 
+        if r.status_code != 200:
+            return f"<pre>OAuth ERROR:\n{r.text}</pre>", 400
+
+        token = r.json()
         session["token"] = token["access_token"]
         return redirect("/guilds")
 
-    # ======================
-    # Guilds do usuário
-    # ======================
+    @app.route("/logout")
+    def logout():
+        session.clear()
+        return redirect("/")
 
     @app.route("/guilds")
     @login_required
@@ -94,71 +103,42 @@ def run_dashboard(bot):
         guilds = api_get("/users/@me/guilds")
         return render_template("guilds.html", guilds=guilds)
 
-    # ======================
-    # Painel Admin Global
-    # ======================
+    # ----------- ADMIN GLOBAL -----------
 
     @app.route("/admin")
     @login_required
     def admin():
-        if not is_owner():
+        user = api_get("/users/@me")
+        if int(user["id"]) not in BOT_OWNERS:
             return "Acesso negado", 403
 
-        db = SessionLocal()
-        guilds_db = db.query(GuildConfig).all()
-        db.close()
+        guilds_data = []
+        for g in bot.guilds:
+            state = get_state(g.id)
+            guilds_data.append({
+                "guild_id": g.id,
+                "name": g.name,
+                "playing": state["playing"],
+                "paused": state["paused"],
+                "volume": state["volume"],
+                "loop": state["loop"],
+                "queue_size": len(state["queue"]),
+            })
 
-        total_bot_guilds = len(bot.guilds)
-        registered = len(guilds_db)
+        return render_template("admin.html", guilds=guilds_data)
 
-        playing = 0
-        paused = 0
-        volumes = []
+    # ----------- PAINEL POR GUILD -----------
 
-        for g in guilds_db:
-            state = get_state(g.guild_id)
-            if state["playing"]:
-                playing += 1
-            if state["paused"]:
-                paused += 1
-            volumes.append(g.volume)
-
-        avg_volume = int(sum(volumes) / len(volumes)) if volumes else 0
-
-        stats = {
-            "total_bot_guilds": total_bot_guilds,
-            "registered": registered,
-            "playing": playing,
-            "paused": paused,
-            "avg_volume": avg_volume
-        }
-
-        return render_template(
-            "admin.html",
-            guilds=guilds_db,
-            stats=stats
-        )
-
-    # ======================
-    # Painel por guild
-    # ======================
-
-    @app.route("/guild/<gid>")
+    @app.route("/guild/<int:gid>")
     @login_required
     def panel(gid):
         return render_template("panel.html", guild_id=gid)
 
-    # ======================
-    # API Estado
-    # ======================
+    # ----------- API -----------
 
-    @app.route("/api/state/<gid>")
+    @app.route("/api/state/<int:gid>")
     def state(gid):
-        return jsonify(get_state(int(gid)))
-
-    # ======================
-    # API Controle individual
-    # ======================
+        return jsonify(get_state(gid))
 
     @app.route("/api/control", methods=["POST"])
     @login_required
@@ -176,52 +156,30 @@ def run_dashboard(bot):
             vc = guild.voice_client
 
             if action == "pause":
-                await vc.pause()
+                vc.pause()
+
             elif action == "resume":
-                await vc.resume()
+                vc.resume()
+
             elif action == "skip":
                 await vc.stop()
+
             elif action == "volume":
                 await vc.set_volume(int(value))
                 save_guild_config(gid, volume=int(value))
+
             elif action == "seek":
                 await vc.seek(int(value) * 1000)
 
-        bot.loop.create_task(task())
-        return {"ok": True}
-
-    # ======================
-    # API Controle GLOBAL (ADMIN)
-    # ======================
-
-    @app.route("/api/admin/control", methods=["POST"])
-    @login_required
-    def admin_control():
-        if not is_owner():
-            return {"error": "unauthorized"}, 403
-
-        action = request.json.get("action")
-
-        async def task():
-            for guild in bot.guilds:
-                vc = guild.voice_client
-                if not vc:
-                    continue
-
-                if action == "pause_all":
-                    await vc.pause()
-
-                elif action == "resume_all":
-                    await vc.resume()
-
-                elif action == "skip_all":
-                    await vc.stop()
-
-                elif action == "disable_loop_all":
-                    save_guild_config(guild.id, loop=False)
+            elif action == "loop_queue":
+                # equivalente a: hb!loop queue
+                state = get_state(gid)
+                state["loop"] = not state["loop"]
 
         bot.loop.create_task(task())
-        return {"ok": True}
+        return jsonify({"ok": True})
 
-    print("🌐 Dashboard online")
+    # ----------- START -----------
+
+    print("🌐 Dashboard iniciando...")
     app.run(host="0.0.0.0", port=10000)
